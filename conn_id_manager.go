@@ -19,6 +19,20 @@ func newConnIDManager(queueControlFrame func(wire.Frame)) *connIDManager {
 }
 
 func (h *connIDManager) Add(f *wire.NewConnectionIDFrame) error {
+	if err := h.add(f); err != nil {
+		return err
+	}
+	if h.queue.Len() > protocol.MaxActiveConnectionIDs {
+		// delete the first connection ID in the queue
+		val := h.queue.Remove(h.queue.Front())
+		h.queueControlFrame(&wire.RetireConnectionIDFrame{
+			SequenceNumber: val.SequenceNumber,
+		})
+	}
+	return nil
+}
+
+func (h *connIDManager) add(f *wire.NewConnectionIDFrame) error {
 	for el := h.queue.Front(); el != nil; el = el.Next() {
 		if el.Value.SequenceNumber < f.RetirePriorTo {
 			h.queueControlFrame(&wire.RetireConnectionIDFrame{
