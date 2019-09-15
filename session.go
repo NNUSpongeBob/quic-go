@@ -108,7 +108,8 @@ type session struct {
 	conn      connection
 	sendQueue *sendQueue
 
-	streamsMap streamManager
+	streamsMap    streamManager
+	connIDManager *connIDManager
 
 	rttStats *congestion.RTTStats
 
@@ -371,6 +372,7 @@ func (s *session) preSetup() {
 }
 
 func (s *session) postSetup() {
+	s.connIDManager = newConnIDManager(s.queueControlFrame)
 	s.receivedPackets = make(chan *receivedPacket, protocol.MaxSessionUnprocessedPackets)
 	s.closeChan = make(chan closeError, 1)
 	s.sendingScheduled = make(chan struct{}, 1)
@@ -788,6 +790,7 @@ func (s *session) handleFrame(f wire.Frame, pn protocol.PacketNumber, encLevel p
 	case *wire.NewTokenFrame:
 		err = s.handleNewTokenFrame(frame)
 	case *wire.NewConnectionIDFrame:
+		err = s.handleNewConnectionIDFrame(frame)
 	case *wire.RetireConnectionIDFrame:
 		// since we don't send new connection IDs, we don't expect retirements
 		err = errors.New("unexpected RETIRE_CONNECTION_ID frame")
@@ -900,6 +903,10 @@ func (s *session) handleNewTokenFrame(frame *wire.NewTokenFrame) error {
 		s.config.TokenStore.Put(s.tokenStoreKey, &ClientToken{data: frame.Token})
 	}
 	return nil
+}
+
+func (s *session) handleNewConnectionIDFrame(f *wire.NewConnectionIDFrame) error {
+	return s.connIDManager.Add(f)
 }
 
 func (s *session) handleAckFrame(frame *wire.AckFrame, pn protocol.PacketNumber, encLevel protocol.EncryptionLevel) error {
