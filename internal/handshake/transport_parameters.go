@@ -34,6 +34,7 @@ const (
 	ackDelayExponentParameterID               transportParameterID = 0xa
 	maxAckDelayParameterID                    transportParameterID = 0xb
 	disableMigrationParameterID               transportParameterID = 0xc
+	activeConnectionIDLimitParameterId        transportParameterID = 0xe
 )
 
 // TransportParameters are parameters sent to the peer during the handshake
@@ -55,8 +56,9 @@ type TransportParameters struct {
 
 	IdleTimeout time.Duration
 
-	StatelessResetToken  *[16]byte
-	OriginalConnectionID protocol.ConnectionID
+	StatelessResetToken     *[16]byte
+	OriginalConnectionID    protocol.ConnectionID
+	ActiveConnectionIDLimit uint64
 }
 
 // Unmarshal the transport parameters
@@ -99,7 +101,8 @@ func (p *TransportParameters) Unmarshal(data []byte, sentBy protocol.Perspective
 			initialMaxStreamsBidiParameterID,
 			initialMaxStreamsUniParameterID,
 			idleTimeoutParameterID,
-			maxPacketSizeParameterID:
+			maxPacketSizeParameterID,
+			activeConnectionIDLimitParameterId:
 			if err := p.readNumericTransportParameter(r, paramID, int(paramLen)); err != nil {
 				return err
 			}
@@ -205,6 +208,8 @@ func (p *TransportParameters) readNumericTransportParameter(
 			maxAckDelay = utils.InfDuration
 		}
 		p.MaxAckDelay = maxAckDelay
+	case activeConnectionIDLimitParameterId:
+		p.ActiveConnectionIDLimit = val
 	default:
 		return fmt.Errorf("TransportParameter BUG: transport parameter %d not found", paramID)
 	}
@@ -266,6 +271,8 @@ func (p *TransportParameters) Marshal() []byte {
 		utils.BigEndian.WriteUint16(b, uint16(p.OriginalConnectionID.Len()))
 		b.Write(p.OriginalConnectionID.Bytes())
 	}
+	// active_connection_id_limit
+	p.marshalVarintParam(b, activeConnectionIDLimitParameterId, p.ActiveConnectionIDLimit)
 
 	data := b.Bytes()
 	binary.BigEndian.PutUint16(data[:2], uint16(b.Len()-2))
@@ -280,8 +287,8 @@ func (p *TransportParameters) marshalVarintParam(b *bytes.Buffer, id transportPa
 
 // String returns a string representation, intended for logging.
 func (p *TransportParameters) String() string {
-	logString := "&handshake.TransportParameters{OriginalConnectionID: %s, InitialMaxStreamDataBidiLocal: %#x, InitialMaxStreamDataBidiRemote: %#x, InitialMaxStreamDataUni: %#x, InitialMaxData: %#x, MaxBidiStreamNum: %d, MaxUniStreamNum: %d, IdleTimeout: %s, AckDelayExponent: %d, MaxAckDelay: %s"
-	logParams := []interface{}{p.OriginalConnectionID, p.InitialMaxStreamDataBidiLocal, p.InitialMaxStreamDataBidiRemote, p.InitialMaxStreamDataUni, p.InitialMaxData, p.MaxBidiStreamNum, p.MaxUniStreamNum, p.IdleTimeout, p.AckDelayExponent, p.MaxAckDelay}
+	logString := "&handshake.TransportParameters{OriginalConnectionID: %s, InitialMaxStreamDataBidiLocal: %#x, InitialMaxStreamDataBidiRemote: %#x, InitialMaxStreamDataUni: %#x, InitialMaxData: %#x, MaxBidiStreamNum: %d, MaxUniStreamNum: %d, IdleTimeout: %s, AckDelayExponent: %d, MaxAckDelay: %s, ActiveConnectionIDLimit: %d"
+	logParams := []interface{}{p.OriginalConnectionID, p.InitialMaxStreamDataBidiLocal, p.InitialMaxStreamDataBidiRemote, p.InitialMaxStreamDataUni, p.InitialMaxData, p.MaxBidiStreamNum, p.MaxUniStreamNum, p.IdleTimeout, p.AckDelayExponent, p.MaxAckDelay, p.ActiveConnectionIDLimit}
 	if p.StatelessResetToken != nil { // the client never sends a stateless reset token
 		logString += ", StatelessResetToken: %#x"
 		logParams = append(logParams, *p.StatelessResetToken)
