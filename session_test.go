@@ -288,7 +288,7 @@ var _ = Describe("Session", func() {
 				SequenceNumber: 10,
 				ConnectionID:   protocol.ConnectionID{1, 2, 3, 4},
 			}, 1, protocol.Encryption1RTT)).To(Succeed())
-			cid, _ := sess.connIDManager.Get()
+			cid, _ := sess.connIDManager.MaybeGetNewConnID()
 			Expect(cid).To(Equal(protocol.ConnectionID{1, 2, 3, 4}))
 		})
 

@@ -101,6 +101,14 @@ func (h *packetHandlerMap) AddResetToken(token [16]byte, handler packetHandler) 
 	h.mutex.Unlock()
 }
 
+func (h *packetHandlerMap) RetireResetToken(token [16]byte) {
+	time.AfterFunc(h.deleteRetiredSessionsAfter, func() {
+		h.mutex.Lock()
+		delete(h.resetTokens, token)
+		h.mutex.Unlock()
+	})
+}
+
 func (h *packetHandlerMap) SetServer(s unknownPacketHandler) {
 	h.mutex.Lock()
 	h.server = s

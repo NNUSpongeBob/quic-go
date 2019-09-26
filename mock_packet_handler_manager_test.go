@@ -122,6 +122,18 @@ func (mr *MockPacketHandlerManagerMockRecorder) Retire(arg0 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Retire", reflect.TypeOf((*MockPacketHandlerManager)(nil).Retire), arg0)
 }
 
+// RetireResetToken mocks base method
+func (m *MockPacketHandlerManager) RetireResetToken(arg0 [16]byte) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RetireResetToken", arg0)
+}
+
+// RetireResetToken indicates an expected call of RetireResetToken
+func (mr *MockPacketHandlerManagerMockRecorder) RetireResetToken(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetireResetToken", reflect.TypeOf((*MockPacketHandlerManager)(nil).RetireResetToken), arg0)
+}
+
 // SetServer mocks base method
 func (m *MockPacketHandlerManager) SetServer(arg0 unknownPacketHandler) {
 	m.ctrl.T.Helper()

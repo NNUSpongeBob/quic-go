@@ -11,6 +11,9 @@ import (
 type connIDManager struct {
 	queue utils.NewConnectionIDList
 
+	changedAtLeastOnce     bool
+	packetsSinceLastChange uint64
+
 	queueControlFrame func(wire.Frame)
 }
 
@@ -76,10 +79,29 @@ func (h *connIDManager) add(f *wire.NewConnectionIDFrame) error {
 	panic("should have processed NEW_CONNECTION_ID frame")
 }
 
-func (h *connIDManager) Get() (protocol.ConnectionID, *[16]byte) {
-	if h.queue.Len() == 0 {
+func (h *connIDManager) SentPacket() {
+	h.packetsSinceLastChange++
+}
+
+func (h *connIDManager) shouldChangeConnID() bool {
+	// iniate the first change as early as possible
+	if !h.changedAtLeastOnce {
+		return true
+	}
+	// For later changes, only change if
+	// 1. The queue of connection IDs is filled more than 50%.
+	// 2. We sent at least PacketsPerConnectionID packets
+	return 2*h.queue.Len() > protocol.MaxActiveConnectionIDs &&
+		h.packetsSinceLastChange > protocol.PacketsPerConnectionID
+}
+
+func (h *connIDManager) MaybeGetNewConnID() (protocol.ConnectionID, *[16]byte) {
+	if !h.shouldChangeConnID() || h.queue.Len() == 0 {
 		return nil, nil
 	}
+
+	h.changedAtLeastOnce = true
+	h.packetsSinceLastChange = 0
 	val := h.queue.Remove(h.queue.Front())
 	return val.ConnectionID, &val.StatelessResetToken
 }

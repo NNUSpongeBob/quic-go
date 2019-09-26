@@ -220,6 +220,18 @@ var _ = Describe("Packet Handler Map", func() {
 			connIDLen = 5
 		})
 
+		It("deletes statless reset tokens after a wait time", func() {
+			handler.deleteRetiredSessionsAfter = scaleDuration(10 * time.Millisecond)
+			token := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+			handler.AddResetToken(token, NewMockPacketHandler(mockCtrl))
+			handler.RetireResetToken(token)
+			time.Sleep(scaleDuration(30 * time.Millisecond))
+			packet := append([]byte{0x40} /* short header packet */, make([]byte, 50)...)
+			packet = append(packet, token[:]...)
+			handler.handlePacket(nil, getPacketBuffer(), packet)
+			// don't EXPECT any calls to destroy()
+		})
+
 		Context("handling", func() {
 			It("handles stateless resets", func() {
 				packetHandler := NewMockPacketHandler(mockCtrl)

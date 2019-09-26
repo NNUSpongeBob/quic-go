@@ -96,9 +96,10 @@ var errCloseForRecreating = errors.New("closing session in order to recreate it"
 type session struct {
 	sessionRunner sessionRunner
 
-	destConnID     protocol.ConnectionID
-	origDestConnID protocol.ConnectionID // if the server sends a Retry, this is the connection ID we used initially
-	srcConnID      protocol.ConnectionID
+	destConnID        protocol.ConnectionID
+	origDestConnID    protocol.ConnectionID // if the server sends a Retry, this is the connection ID we used initially
+	srcConnID         protocol.ConnectionID
+	currentResetToken [16]byte
 
 	perspective    protocol.Perspective
 	initialVersion protocol.VersionNumber // if version negotiation is performed, this is the version we initially tried
@@ -443,6 +444,12 @@ runLoop:
 			}
 		case <-s.handshakeCompleteChan:
 			s.handleHandshakeComplete()
+		}
+
+		if newConnID, resetToken := s.connIDManager.MaybeGetNewConnID(); newConnID != nil {
+			s.sessionRunner.RetireResetToken(s.currentResetToken)
+			s.sessionRunner.AddResetToken(*resetToken, s)
+			s.currentResetToken = *resetToken
 		}
 
 		now := time.Now()
@@ -1046,6 +1053,7 @@ func (s *session) processTransportParameters(data []byte) {
 	s.connFlowController.UpdateSendWindow(params.InitialMaxData)
 	s.rttStats.SetMaxAckDelay(params.MaxAckDelay)
 	if params.StatelessResetToken != nil {
+		s.currentResetToken = *params.StatelessResetToken
 		s.sessionRunner.AddResetToken(*params.StatelessResetToken, s)
 	}
 	// On the server side, the early session is ready as soon as we processed
@@ -1196,6 +1204,7 @@ func (s *session) sendPackedPacket(packet *packedPacket) {
 		})
 	}
 	s.logPacket(packet)
+	s.connIDManager.SentPacket()
 	s.sendQueue.Send(packet)
 }
 
