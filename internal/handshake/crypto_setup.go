@@ -60,6 +60,15 @@ func (m messageType) String() string {
 	}
 }
 
+type handshakeOpener struct {
+	LongHeaderOpener
+	open func(dst, src []byte, pn protocol.PacketNumber, associatedData []byte) ([]byte, error)
+}
+
+func (o *handshakeOpener) Open(dst, src []byte, pn protocol.PacketNumber, associatedData []byte) ([]byte, error) {
+	return o.open(dst, src, pn, associatedData)
+}
+
 type cryptoSetup struct {
 	tlsConf *qtls.Config
 	conn    *qtls.Conn
@@ -234,14 +243,6 @@ func (h *cryptoSetup) ChangeConnectionID(id protocol.ConnectionID) error {
 
 func (h *cryptoSetup) SetLargest1RTTAcked(pn protocol.PacketNumber) {
 	h.aead.SetLargestAcked(pn)
-	// drop initial keys
-	// TODO: do this earlier
-	if h.initialOpener != nil {
-		h.initialOpener = nil
-		h.initialSealer = nil
-		h.runner.DropKeys(protocol.EncryptionInitial)
-		h.logger.Debugf("Dropping Initial keys.")
-	}
 	// drop handshake keys
 	if h.handshakeOpener != nil {
 		h.handshakeOpener = nil
@@ -565,6 +566,13 @@ func (h *cryptoSetup) SendAlert(alert uint8) {
 	h.alertChan <- alert
 }
 
+func (h *cryptoSetup) dropInitialKeys() {
+	h.initialOpener = nil
+	h.initialSealer = nil
+	h.runner.DropKeys(protocol.EncryptionInitial)
+	h.logger.Debugf("Dropping Initial keys.")
+}
+
 func (h *cryptoSetup) GetInitialSealer() (LongHeaderSealer, error) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -585,6 +593,11 @@ func (h *cryptoSetup) GetHandshakeSealer() (LongHeaderSealer, error) {
 		}
 		return nil, errors.New("CryptoSetup: no sealer with encryption level Handshake")
 	}
+
+	if h.perspective == protocol.PerspectiveClient && h.handshakeSealer != nil && h.initialOpener != nil {
+		h.dropInitialKeys()
+	}
+
 	return h.handshakeSealer, nil
 }
 
@@ -619,6 +632,23 @@ func (h *cryptoSetup) GetHandshakeOpener() (LongHeaderOpener, error) {
 		// if the initial opener is also not available, the keys were already dropped
 		return nil, ErrKeysDropped
 	}
+
+	if h.perspective == protocol.PerspectiveServer && h.initialOpener != nil {
+		return &handshakeOpener{
+			LongHeaderOpener: h.handshakeOpener,
+			open: func(dst, src []byte, pn protocol.PacketNumber, associatedData []byte) ([]byte, error) {
+				data, err := h.handshakeOpener.Open(dst, src, pn, associatedData)
+				if err != nil {
+					return nil, err
+				}
+				h.mutex.Lock()
+				h.dropInitialKeys()
+				h.mutex.Unlock()
+				return data, nil
+			},
+		}, nil
+	}
+
 	return h.handshakeOpener, nil
 }
 
